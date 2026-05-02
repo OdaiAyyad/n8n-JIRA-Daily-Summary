@@ -233,13 +233,8 @@ http://localhost:5678/webhook/jira-report
 ---
 
 ## ⚙️ How the Workflow Detects "Worked On"
-
-| Condition | Section |
-|---|---|
-| Ticket currently assigned to you | ✅ Tested |
-| You commented on it today (even if reassigned) | ✅ Tested |
-| You reported it + not currently assigned to you | 🐛 Bugs |
-| Status is Canceled | 🚫 Hidden |
+The workflow fetches the full changelog and comments for each ticket via the Jira API, then applies the following logic based on actions performed on the report date:
+SituationTestedBugsYou changed status or commented today✅❌You created it today (no action yet)❌✅You created it AND acted on it today✅✅Status is Ready for QA❌❌Status is Canceled❌❌Developer acted on it, not you❌❌
 
 ---
 
