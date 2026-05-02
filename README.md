@@ -233,8 +233,38 @@ http://localhost:5678/webhook/jira-report
 ---
 
 ## ⚙️ How the Workflow Detects "Worked On"
-The workflow fetches the full changelog and comments for each ticket via the Jira API, then applies the following logic based on actions performed on the report date:
-SituationTestedBugsYou changed status or commented today✅❌You created it today (no action yet)❌✅You created it AND acted on it today✅✅Status is Ready for QA❌❌Status is Canceled❌❌Developer acted on it, not you❌❌
+
+The workflow fetches the full **changelog and comments** for each ticket via the Jira API.
+A ticket only appears if **you personally performed an action on it** on the report date.
+
+### 🔍 Detection Logic
+
+```
+Did YOU comment or change the status today?
+├── YES → ✅ Tested
+└── NO  → skipped (unless you created it)
+
+Did YOU create/report it today?
+├── YES + not Canceled/Ready for QA → 🐛 Bugs
+└── NO  → not in Bugs
+
+Did YOU both create it AND act on it today?
+└── YES → ✅ Tested + 🐛 Bugs (appears in both)
+```
+
+### 📊 Quick Reference
+
+| Situation | ✅ Tested | 🐛 Bugs |
+|---|:---:|:---:|
+| You changed status or commented today | ✅ | ❌ |
+| You created it today (no action yet) | ❌ | ✅ |
+| You created it AND acted on it today | ✅ | ✅ |
+| Status is `Ready for QA` | ❌ | ❌ |
+| Status is `Canceled` / `Cancel` | ❌ | ❌ |
+| Developer acted on it, not you | ❌ | ❌ |
+
+> ⚠️ **Important:** The report is based on the **previous working day**, not today.
+> Saturday automatically looks back to Wednesday (skipping Thu/Fri weekend).
 
 ---
 
