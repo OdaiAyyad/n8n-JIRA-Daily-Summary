@@ -1,0 +1,472 @@
+{
+  "name": "JIRA Daily Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "for (const item of $input.all()) {\n  item.json._assignedToMe = true;\n}\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        16
+      ],
+      "id": "88842b58-23d2-4e9d-9769-1b7bc145a36b",
+      "name": "Tag as Tested"
+    },
+    {
+      "parameters": {
+        "jsCode": "for (const item of $input.all()) {\n  item.json._reportedByMe = true;\n}\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        208
+      ],
+      "id": "adc72aa4-8fde-4959-a51e-88207a15ba80",
+      "name": "Tag as Reported"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        656,
+        192
+      ],
+      "id": "fe1e06a6-cf76-468f-91c7-a230d388e24f",
+      "name": "Merge Tickets"
+    },
+    {
+      "parameters": {
+        "jsCode": "const seenTested = new Set();\nconst seenBugs = new Set();\nconst tested = [];\nconst bugs = [];\nconst myAccountId = '712020:73241cb0-4434-4afb-a9c9-1a320a644c30';\nconst reportDate = $('Calculate Report Date').first().json.reportDate;\n\nfunction iActedOnDate(item) {\n  // Check comments on report date\n  const comments = item.json.fields?.comment?.comments || [];\n  const commented = comments.some(c =>\n    c.author?.accountId === myAccountId &&\n    c.created?.slice(0, 10) === reportDate\n  );\n  if (commented) return true;\n\n  // Check status changes on report date\n  const histories = item.json.changelog?.histories || [];\n  const changedStatus = histories.some(h =>\n    h.author?.accountId === myAccountId &&\n    h.created?.slice(0, 10) === reportDate &&\n    h.items?.some(i => i.field === 'status')\n  );\n  return changedStatus;\n}\n\nfunction iReportedIt(item) {\n  return item.json.fields?.reporter?.accountId === myAccountId;\n}\n\nfunction isAssignedToMe(item) {\n  return item.json.fields?.assignee?.accountId === myAccountId;\n}\n\nconst canceledStatuses = ['cancel', 'canceled', 'cancelled'];\nconst excludedStatuses = ['ready for qa', ...canceledStatuses];\n\nfor (const item of $input.all()) {\n  const key = item.json.key;\n  const summary = item.json.fields?.summary;\n  const status = item.json.fields?.status?.name || 'Unknown';\n  const link = `https://joacademydev.atlassian.net/browse/${key}`;\n  const statusLower = status.toLowerCase();\n\n  // Skip Ready for QA and Canceled entirely\n  if (excludedStatuses.includes(statusLower)) continue;\n\n  const acted = iActedOnDate(item);\n  const reported = iReportedIt(item);\n\n  // Tested section — if you acted on it today\n  if (acted) {\n    if (!seenTested.has(key)) {\n      seenTested.add(key);\n      tested.push({ key, summary, status, link });\n    }\n  }\n\n// Bugs section — if you reported it AND created it on report date\nconst createdDate = item.json.fields?.created?.slice(0, 10);\nconst openedToday = createdDate === reportDate;\n\nif (reported && openedToday && !canceledStatuses.includes(statusLower)) {\n    if (!seenBugs.has(key)) {\n      seenBugs.add(key);\n      bugs.push({ key, summary, status, link });\n    }\n  }\n}\n\nreturn [{ json: { tested, bugs } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        208
+      ],
+      "id": "4e1ef6fe-96d1-4232-a048-5147a2bb133d",
+      "name": "Split & Deduplicate"
+    },
+    {
+      "parameters": {
+        "sendTo": "odai.mohammad@joacademy.com",
+        "subject": "=📋 Jira Daily Summary — {{ new Date($('Calculate Report Date').first().json.reportDate).toLocaleDateString('en-GB', {day: '2-digit', month: 'short', year: 'numeric'}) }}",
+        "message": "=<h2>📋 Your Jira Summary</h2>\n\n<h3>✅ Tickets I Tested</h3>\n<ul>\n{{ $json.tested.map(item => `\n<li>\n<b>${item.key}</b> — ${item.summary}<br>\nStatus: ${item.status}<br>\n<a href=\"${item.link}\">${item.link}</a>\n</li>\n`).join('') }}\n</ul>\n\n<h3>🐛 Bugs I Opened</h3>\n<ul>\n{{ $json.bugs.map(item => `\n<li>\n<b>${item.key}</b> — ${item.summary}<br>\nStatus: ${item.status}<br>\n<a href=\"${item.link}\">${item.link}</a>\n</li>\n`).join('') }}\n</ul>\n\n<hr>\n\n<h3>📋 Copy for Timesheet</h3>\n\n<b>I tested:</b><br>\n<pre>{{ $json.tested.map(item => item.link).join('\\n') }}</pre>\n\n<br><br>\n\n<b>I opened:</b><br>\n<pre>{{ $json.bugs.map(item => item.link).join('\\n') }}</pre>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1776,
+        208
+      ],
+      "id": "2891ab35-05f7-4c59-b2a4-c1cf2520c441",
+      "name": "Send Daily Summary",
+      "webhookId": "3fd7177e-5d26-4265-8322-9f3e7ffa77a7",
+      "executeOnce": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "eztNA4XOaFJYWXjP",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "fields": "summary,status,assignee,reporter,changelog,comment",
+          "jql": "=assignee = currentUser() AND updated >= \"{{ $json.reportDate }}\" AND updated <= \"{{ $json.reportDate }} 23:59\" AND issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement)"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        208,
+        16
+      ],
+      "id": "c9e7374e-6ad1-4f66-b0d6-1d317ced8622",
+      "name": "Fetch Assigned Tickets",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "BfCQ6QVUYpdN1DnL",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "options": {
+          "fields": "summary,status,assignee,reporter,changelog,comment",
+          "jql": "=reporter = currentUser() AND updated >= \"{{ $json.reportDate }}\" AND updated <= \"{{ $json.reportDate }} 23:59\" AND issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement)"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        208,
+        208
+      ],
+      "id": "b682bdd1-0434-48d2-bccd-3e6319a02446",
+      "name": "Fetch Reported Tickets",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "BfCQ6QVUYpdN1DnL",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                0,
+                1,
+                2,
+                3,
+                6
+              ],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 46
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        304
+      ],
+      "id": "55a2bbc7-b8d8-49ce-9cd8-c0ab5af4a641",
+      "name": "Daily Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "fields": "summary,status,assignee,reporter,changelog,comment",
+          "jql": "=issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement) AND updated >= \"{{ $json.reportDate }}\" AND updated <= \"{{ $json.reportDate }} 23:59\" AND assignee != currentUser() AND reporter != currentUser()"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        208,
+        400
+      ],
+      "id": "da67a8f5-53c6-45f4-b66f-bcc3ff260508",
+      "name": "Fetch Commented Tickets",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "BfCQ6QVUYpdN1DnL",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const myAccountId = '712020:73241cb0-4434-4afb-a9c9-1a320a644c30';\nconst reportDate = $('Calculate Report Date').first().json.reportDate;\n\nconst filtered = $input.all().filter(item => {\n  const comments = item.json.fields?.comment?.comments || [];\n  return comments.some(c =>\n    c.author?.accountId === myAccountId &&\n    c.created?.slice(0, 10) === reportDate\n  );\n});\n\nfor (const item of filtered) {\n  item.json._otherTicket = true;\n}\n\nreturn filtered;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        400
+      ],
+      "id": "ea8713fa-03bf-431e-8675-59dfc0ab9e98",
+      "name": "Tag as Commented"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f0079be8-869a-47e8-bf66-6409a360e828",
+              "leftValue": "={{ $json.tested.length + $json.bugs.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1552,
+        208
+      ],
+      "id": "353f6bfd-669e-47b3-9881-056be9769397",
+      "name": "Has Tickets?"
+    },
+    {
+      "parameters": {
+        "path": "jira-report",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        112
+      ],
+      "id": "6bc8fea9-af3d-411c-93c5-e95ed8dd3ed1",
+      "name": "Webhook",
+      "webhookId": "504b8f8d-9dfd-4439-8c21-242188b21e28"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat\n\nlet daysBack;\n\nif (dayOfWeek === 6) {\n  // Saturday → look back to Wednesday (3 days)\n  daysBack = 3;\n} else {\n  // All other working days → look back 1 day\n  daysBack = 1;\n}\n\nconst reportDate = new Date(Date.now() - daysBack * 86400000);\nconst reportDateStr = reportDate.toISOString().slice(0, 10);\n\nreturn [{ json: { reportDate: reportDateStr } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        208
+      ],
+      "id": "9eed754b-afe7-4f91-9a8e-c831838dda12",
+      "name": "Calculate Report Date"
+    },
+    {
+      "parameters": {
+        "jsCode": "const seen = new Set();\nconst unique = [];\n\nfor (const item of $input.all()) {\n  const key = item.json.key;\n  if (!seen.has(key)) {\n    seen.add(key);\n    unique.push(item);\n  }\n}\n\nreturn unique;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        208
+      ],
+      "id": "e182e2e6-8ffc-4e04-8e22-2aba64aa52e1",
+      "name": "Deduplicate Keys"
+    },
+    {
+      "parameters": {
+        "url": "=https://joacademydev.atlassian.net/rest/api/2/issue/{{ $json.key }}?expand=changelog&fields=comment,status,summary,assignee,reporter,created",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "jiraSoftwareCloudApi",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1104,
+        208
+      ],
+      "id": "be3ded4f-0452-4d2e-9c9a-428a21606a5b",
+      "name": "Fetch Changelog",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "BfCQ6QVUYpdN1DnL",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Tag as Tested": {
+      "main": [
+        [
+          {
+            "node": "Merge Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag as Reported": {
+      "main": [
+        [
+          {
+            "node": "Merge Tickets",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Tickets": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split & Deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Has Tickets?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Assigned Tickets": {
+      "main": [
+        [
+          {
+            "node": "Tag as Tested",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reported Tickets": {
+      "main": [
+        [
+          {
+            "node": "Tag as Reported",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Calculate Report Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Commented Tickets": {
+      "main": [
+        [
+          {
+            "node": "Tag as Commented",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag as Commented": {
+      "main": [
+        [
+          {
+            "node": "Merge Tickets",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Has Tickets?": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Calculate Report Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Report Date": {
+      "main": [
+        [
+          {
+            "node": "Fetch Assigned Tickets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Commented Tickets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Reported Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Keys": {
+      "main": [
+        [
+          {
+            "node": "Fetch Changelog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Changelog": {
+      "main": [
+        [
+          {
+            "node": "Split & Deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "4NU2eEbbeXRGIAPF",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "ecd9ea02-df4f-4466-911b-aeabc9e57855",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "53ca6fd14d3f2e390367535c11fc3d49f6fa5d2f5df024092cc0dc020afe7ab8"
+  },
+  "id": "JWOQ50cC7VhQPfLC",
+  "tags": []
+}
