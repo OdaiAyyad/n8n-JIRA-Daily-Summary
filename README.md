@@ -228,6 +228,13 @@ To get yesterday's report at any time, open this URL in your browser:
 http://localhost:5678/webhook/jira-report
 ```
 
+To report on a specific calendar day, supply a valid `YYYY-MM-DD` date query parameter:
+```
+http://localhost:5678/webhook/jira-report?date=2026-07-21
+```
+
+The workflow rejects malformed or impossible dates (for example, `2026-02-30`). It uses the provided date for every Jira query; without `date`, it retains the previous-working-day behavior.
+
 > ⚠️ Docker must be running for this to work.
 
 ---
@@ -278,6 +285,20 @@ Did YOU both create it AND act on it today?
 ---
 
 ## 🔄 Updating Credentials
+
+## Recommended local startup
+
+Docker Desktop must be installed and its engine must be running before n8n can start. The `compose.yaml` in this repository keeps n8n data in the named `n8n_data` volume and configures the Asia/Amman timezone.
+
+```powershell
+Copy-Item .env.example .env
+# Edit .env and replace N8N_ENCRYPTION_KEY with a new long random secret.
+docker compose up -d
+```
+
+Open `http://localhost:5678` and create the new n8n owner account. Import `JIRA Daily Summary.json`, reconnect the Jira and Gmail credentials in the nodes, test the webhook, and only then activate the workflow.
+
+---
 
 If your Gmail OAuth token expires:
 1. Open the **Send Daily Summary** node

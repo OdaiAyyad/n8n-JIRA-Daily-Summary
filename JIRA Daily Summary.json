@@ -69,13 +69,7 @@
       "id": "2891ab35-05f7-4c59-b2a4-c1cf2520c441",
       "name": "Send Daily Summary",
       "webhookId": "3fd7177e-5d26-4265-8322-9f3e7ffa77a7",
-      "executeOnce": true,
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "eztNA4XOaFJYWXjP",
-          "name": "Gmail account"
-        }
-      }
+      "executeOnce": true
     },
     {
       "parameters": {
@@ -83,7 +77,7 @@
         "returnAll": true,
         "options": {
           "fields": "summary,status,assignee,reporter,changelog,comment",
-          "jql": "=assignee = currentUser() AND updated >= \"{{ $json.reportDate }}\" AND updated <= \"{{ $json.reportDate }} 23:59\" AND issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement)"
+          "jql": "=assignee = currentUser() AND updated >= \"{{ $json.reportDate }}\" AND updated < \"{{ $json.reportDateEnd }}\" AND issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement)"
         }
       },
       "type": "n8n-nodes-base.jira",
@@ -93,20 +87,14 @@
         16
       ],
       "id": "c9e7374e-6ad1-4f66-b0d6-1d317ced8622",
-      "name": "Fetch Assigned Tickets",
-      "credentials": {
-        "jiraSoftwareCloudApi": {
-          "id": "BfCQ6QVUYpdN1DnL",
-          "name": "Jira SW Cloud account"
-        }
-      }
+      "name": "Fetch Assigned Tickets"
     },
     {
       "parameters": {
         "operation": "getAll",
         "options": {
           "fields": "summary,status,assignee,reporter,changelog,comment",
-          "jql": "=reporter = currentUser() AND updated >= \"{{ $json.reportDate }}\" AND updated <= \"{{ $json.reportDate }} 23:59\" AND issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement)"
+          "jql": "=reporter = currentUser() AND updated >= \"{{ $json.reportDate }}\" AND updated < \"{{ $json.reportDateEnd }}\" AND issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement)"
         }
       },
       "type": "n8n-nodes-base.jira",
@@ -116,13 +104,7 @@
         208
       ],
       "id": "b682bdd1-0434-48d2-bccd-3e6319a02446",
-      "name": "Fetch Reported Tickets",
-      "credentials": {
-        "jiraSoftwareCloudApi": {
-          "id": "BfCQ6QVUYpdN1DnL",
-          "name": "Jira SW Cloud account"
-        }
-      }
+      "name": "Fetch Reported Tickets"
     },
     {
       "parameters": {
@@ -158,7 +140,7 @@
         "returnAll": true,
         "options": {
           "fields": "summary,status,assignee,reporter,changelog,comment",
-          "jql": "=issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement) AND updated >= \"{{ $json.reportDate }}\" AND updated <= \"{{ $json.reportDate }} 23:59\" AND assignee != currentUser() AND reporter != currentUser()"
+          "jql": "=issueType in (Task, Bug, Subtask, Sub-task, Story, Enhancement) AND updated >= \"{{ $json.reportDate }}\" AND updated < \"{{ $json.reportDateEnd }}\" AND assignee != currentUser() AND reporter != currentUser()"
         }
       },
       "type": "n8n-nodes-base.jira",
@@ -168,13 +150,7 @@
         400
       ],
       "id": "da67a8f5-53c6-45f4-b66f-bcc3ff260508",
-      "name": "Fetch Commented Tickets",
-      "credentials": {
-        "jiraSoftwareCloudApi": {
-          "id": "BfCQ6QVUYpdN1DnL",
-          "name": "Jira SW Cloud account"
-        }
-      }
+      "name": "Fetch Commented Tickets"
     },
     {
       "parameters": {
@@ -224,6 +200,7 @@
     },
     {
       "parameters": {
+        "httpMethod": "GET",
         "path": "jira-report",
         "options": {}
       },
@@ -239,7 +216,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const now = new Date();\nconst dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat\n\nlet daysBack;\n\nif (dayOfWeek === 6) {\n  // Saturday → look back to Wednesday (3 days)\n  daysBack = 3;\n} else {\n  // All other working days → look back 1 day\n  daysBack = 1;\n}\n\nconst reportDate = new Date(Date.now() - daysBack * 86400000);\nconst reportDateStr = reportDate.toISOString().slice(0, 10);\n\nreturn [{ json: { reportDate: reportDateStr } }];"
+        "jsCode": "const requestedDate = $input.first().json.query?.date;\n\nfunction isValidDate(value) {\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;\n  const parsed = new Date(`${value}T00:00:00Z`);\n  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;\n}\n\nfunction addDays(dateString, days) {\n  const date = new Date(`${dateString}T00:00:00Z`);\n  date.setUTCDate(date.getUTCDate() + days);\n  return date.toISOString().slice(0, 10);\n}\n\nlet reportDate;\nlet triggerSource;\n\nif (requestedDate !== undefined) {\n  if (typeof requestedDate !== 'string' || !isValidDate(requestedDate)) {\n    throw new Error('The date query parameter must be a real calendar date in YYYY-MM-DD format, for example ?date=2026-07-21');\n  }\n  reportDate = requestedDate;\n  triggerSource = 'webhook';\n} else {\n  // The Docker configuration sets Asia/Amman as the n8n timezone.\n  const now = new Date();\n  const daysBack = now.getDay() === 6 ? 3 : 1; // Saturday reports Wednesday; all other days report yesterday.\n  reportDate = addDays(now.toLocaleDateString('en-CA', { timeZone: 'Asia/Amman' }), -daysBack);\n  triggerSource = 'schedule';\n}\n\nreturn [{ json: { reportDate, reportDateEnd: addDays(reportDate, 1), triggerSource } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -277,13 +254,7 @@
         208
       ],
       "id": "be3ded4f-0452-4d2e-9c9a-428a21606a5b",
-      "name": "Fetch Changelog",
-      "credentials": {
-        "jiraSoftwareCloudApi": {
-          "id": "BfCQ6QVUYpdN1DnL",
-          "name": "Jira SW Cloud account"
-        }
-      }
+      "name": "Fetch Changelog"
     }
   ],
   "pinData": {},
@@ -453,20 +424,16 @@
       ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
     "timeSavedMode": "fixed",
-    "errorWorkflow": "4NU2eEbbeXRGIAPF",
+    "timezone": "Asia/Amman",
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
   "versionId": "ecd9ea02-df4f-4466-911b-aeabc9e57855",
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "53ca6fd14d3f2e390367535c11fc3d49f6fa5d2f5df024092cc0dc020afe7ab8"
-  },
-  "id": "JWOQ50cC7VhQPfLC",
+  "meta": {},
   "tags": []
 }
