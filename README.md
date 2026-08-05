@@ -290,6 +290,8 @@ Did YOU both create it AND act on it today?
 
 Docker Desktop must be installed and its engine must be running before n8n can start. The `compose.yaml` in this repository keeps n8n data in the named `n8n_data` volume and configures the Asia/Amman timezone.
 
+The port is deliberately bound to `127.0.0.1`, so the webhook is reachable only from this computer. Do not change it to `5678:5678` unless you also add suitable access controls.
+
 ```powershell
 Copy-Item .env.example .env
 # Edit .env and replace N8N_ENCRYPTION_KEY with a new long random secret.
@@ -297,6 +299,16 @@ docker compose up -d
 ```
 
 Open `http://localhost:5678` and create the new n8n owner account. Import `JIRA Daily Summary.json`, reconnect the Jira and Gmail credentials in the nodes, test the webhook, and only then activate the workflow.
+
+## Back up n8n data
+
+Run this from PowerShell in the repository folder whenever you make an important n8n change:
+
+```powershell
+.\backup-n8n.ps1
+```
+
+The archive is saved in `backups/`, which is intentionally excluded from Git. Keep both the archive and the `.env` encryption key somewhere safe; the backup contains credentials encrypted with that key.
 
 ---
 
